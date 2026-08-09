@@ -18,15 +18,24 @@ public final class Constants {
   }
 
   public static class Arm {
-    public static final int motor1ID = 1;
-    public static final int motor2ID = 2;
-    public static final int motor3ID = 3;
-    public static final int motor4ID = 4;
+    public static final int MOTOR_1_ID = 1;
+    public static final int MOTOR_2_ID = 2;
 
-    public static final boolean motor1Inverted = false;
+    public static final boolean MOTOR_1_INVERTED = false;
+    public static final boolean MOTOR_2_INVERTED = false;
 
-    public static final double voltage = 1.0;;
-    public static final double minAngle = 0.0;
-    public static final double maxAngle = 90.0;
+    public static final double DEFAULT_VOLTAGE = 1.0;
+    public static final double MAX_TEST_VOLTAGE = 3.0;
+
+    public static final double MIN_ANGLE_DEGREES = 0.0;
+    public static final double MAX_ANGLE_DEGREES = 90.0;
+
+    // Keep this at zero until the arm is manually moved from 0 to 90 degrees and the average
+    // TalonFX rotor position is read from AdvantageScope.
+    public static final double MOTOR_ROTATIONS_AT_MAX_ANGLE = 0.0;
+
+    private Arm() {}
   }
+
+  private Constants() {}
 }
