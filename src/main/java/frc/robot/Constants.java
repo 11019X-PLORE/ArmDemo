@@ -13,15 +13,17 @@ package frc.robot;
  * constants are needed, to reduce verbosity.
  */
 public final class Constants {
-  public static class OperatorConstants {
-    public static final int kDriverControllerPort = 0;
-    public static final int kArmUpButton = 4;
-    public static final int kArmDownButton = 2;
-    public static final int kElevatorExtendButton = 3;
-    public static final int kElevatorRetractButton = 1;
+  public static final class OperatorConstants {
+    public static final int DRIVER_CONTROLLER_PORT = 0;
+    public static final int ARM_UP_BUTTON = 4;
+    public static final int ARM_DOWN_BUTTON = 2;
+    public static final int ELEVATOR_EXTEND_BUTTON = 3;
+    public static final int ELEVATOR_RETRACT_BUTTON = 1;
+
+    private OperatorConstants() {}
   }
 
-  public static class Arm {
+  public static final class Arm {
     public static final int MOTOR_1_ID = 1;
     public static final int MOTOR_2_ID = 2;
 
@@ -29,7 +31,7 @@ public final class Constants {
     public static final boolean MOTOR_2_INVERTED = false;
 
     public static final double DEFAULT_VOLTAGE = 3.0;
-    public static final double MAX_TEST_VOLTAGE = 6.0;
+    public static final double MAX_VOLTAGE = 6.0;
 
     public static final double MIN_ANGLE_DEGREES = 0.0;
     public static final double MAX_ANGLE_DEGREES = 90.0;
@@ -41,7 +43,7 @@ public final class Constants {
     private Arm() {}
   }
 
-  public static class Elevator {
+  public static final class Elevator {
     public static final int MOTOR_1_ID = 11;
     public static final int MOTOR_2_ID = 12;
 

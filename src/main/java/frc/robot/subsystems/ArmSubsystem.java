@@ -1,3 +1,7 @@
+// Copyright (c) FIRST and other WPILib contributors.
+// Open Source Software; you can modify and/or share it under the terms of
+// the WPILib BSD license file in the root directory of this project.
+
 package frc.robot.subsystems;
 
 import edu.wpi.first.wpilibj2.command.Command;
@@ -110,7 +114,7 @@ public class ArmSubsystem extends SubsystemBase {
   private double getRequestedVoltageMagnitude() {
     double requestedVoltage = Math.abs(voltageSupplier.getAsDouble());
     return Double.isFinite(requestedVoltage)
-        ? Math.min(requestedVoltage, Constants.Arm.MAX_TEST_VOLTAGE)
+        ? Math.min(requestedVoltage, Constants.Arm.MAX_VOLTAGE)
         : 0.0;
   }
 

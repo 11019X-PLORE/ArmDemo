@@ -4,12 +4,12 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
 import frc.robot.Constants.OperatorConstants;
 import frc.robot.subsystems.ArmIOTalonFX;
 import frc.robot.subsystems.ArmSubsystem;
 import frc.robot.subsystems.ElevatorIOTalonFX;
 import frc.robot.subsystems.ElevatorSubsystem;
-import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
 import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
 /**
@@ -28,8 +28,8 @@ public class RobotContainer {
   private final ElevatorSubsystem elevatorSubsystem =
       new ElevatorSubsystem(new ElevatorIOTalonFX());
 
-  private final CommandPS5Controller m_driverController =
-      new CommandPS5Controller(OperatorConstants.kDriverControllerPort);
+  private final CommandPS5Controller driverController =
+      new CommandPS5Controller(OperatorConstants.DRIVER_CONTROLLER_PORT);
 
   /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
@@ -39,18 +39,18 @@ public class RobotContainer {
   }
 
   private void configureBindings() {
-    // This controller reports Xbox-style raw button IDs in Driver Station: Y=4 and A=1.
-    m_driverController
-        .button(OperatorConstants.kArmUpButton)
+    // This controller reports Xbox-style raw button IDs in Driver Station.
+    driverController
+        .button(OperatorConstants.ARM_UP_BUTTON)
         .onTrue(armSubsystem.moveToUpperLimitCommand());
-    m_driverController
-        .button(OperatorConstants.kArmDownButton)
+    driverController
+        .button(OperatorConstants.ARM_DOWN_BUTTON)
         .onTrue(armSubsystem.moveToLowerLimitCommand());
-    m_driverController
-        .button(OperatorConstants.kElevatorExtendButton)
+    driverController
+        .button(OperatorConstants.ELEVATOR_EXTEND_BUTTON)
         .onTrue(elevatorSubsystem.moveToUpperLimitCommand());
-    m_driverController
-        .button(OperatorConstants.kElevatorRetractButton)
+    driverController
+        .button(OperatorConstants.ELEVATOR_RETRACT_BUTTON)
         .onTrue(elevatorSubsystem.moveToLowerLimitCommand());
   }
 }

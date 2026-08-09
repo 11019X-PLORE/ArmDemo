@@ -16,7 +16,7 @@
   },
   "java.test.config": [
     {
-      "name": "WPIlibUnitTests",
+      "name": "WPILibUnitTests",
       "workingDirectory": "${workspaceFolder}/build/jni/release",
       "vmargs": [ "-Djava.library.path=${workspaceFolder}/build/jni/release" ],
       "env": {
@@ -25,7 +25,7 @@
       }
     },
   ],
-  "java.test.defaultConfig": "WPIlibUnitTests",
+  "java.test.defaultConfig": "WPILibUnitTests",
   "java.import.gradle.annotationProcessing.enabled": false,
   "java.completion.favoriteStaticMembers": [
     "org.junit.Assert.*",

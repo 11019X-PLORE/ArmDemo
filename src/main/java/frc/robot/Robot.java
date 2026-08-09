@@ -15,7 +15,7 @@ import org.littletonrobotics.junction.networktables.NT4Publisher;
  * this project, you must also update the Main.java file in the project.
  */
 public class Robot extends LoggedRobot {
-  private final RobotContainer m_robotContainer;
+  private final RobotContainer robotContainer;
 
   /**
    * This function is run when the robot is first started up and should be used for any
@@ -24,7 +24,7 @@ public class Robot extends LoggedRobot {
   public Robot() {
     Logger.addDataReceiver(new NT4Publisher());
     Logger.start();
-    m_robotContainer = new RobotContainer();
+    robotContainer = new RobotContainer();
   }
 
   /**
