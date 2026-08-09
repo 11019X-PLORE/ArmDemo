@@ -85,6 +85,20 @@ class ArmSubsystemTest {
   }
 
   @Test
+  void followsTheMeasuredEncoderDirectionWhenCalibrationIsNegative() {
+    FakeArmIO io = new FakeArmIO();
+    io.motor1Rotations = -20.0;
+    io.motor2Rotations = -20.0;
+    ArmSubsystem arm = new ArmSubsystem(io, () -> 2.0, -40.0);
+
+    arm.moveUp();
+    assertEquals(-2.0, io.appliedVoltage, 1e-9);
+
+    arm.moveDown();
+    assertEquals(2.0, io.appliedVoltage, 1e-9);
+  }
+
+  @Test
   void upperLimitCommandRunsUntilNinetyDegreesAndThenStops() {
     FakeArmIO io = new FakeArmIO();
     io.motor1Rotations = 20.0;
@@ -99,6 +113,7 @@ class ArmSubsystemTest {
 
     io.motor1Rotations = 40.0;
     io.motor2Rotations = 40.0;
+    arm.periodic();
     command.execute();
     assertTrue(command.isFinished());
     command.end(false);
@@ -120,6 +135,7 @@ class ArmSubsystemTest {
 
     io.motor1Rotations = 0.0;
     io.motor2Rotations = 0.0;
+    arm.periodic();
     command.execute();
     assertTrue(command.isFinished());
     command.end(false);
@@ -132,13 +148,8 @@ class ArmSubsystemTest {
     double appliedVoltage;
 
     @Override
-    public double getMotor1Rotations() {
-      return motor1Rotations;
-    }
-
-    @Override
-    public double getMotor2Rotations() {
-      return motor2Rotations;
+    public ArmSubsystem.ArmEncoderPositions getEncoderPositions() {
+      return new ArmSubsystem.ArmEncoderPositions(motor1Rotations, motor2Rotations);
     }
 
     @Override

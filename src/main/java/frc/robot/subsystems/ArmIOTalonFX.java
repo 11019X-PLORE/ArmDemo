@@ -1,14 +1,19 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
+import edu.wpi.first.units.measure.Angle;
 import frc.robot.Constants;
 
 public class ArmIOTalonFX implements ArmSubsystem.ArmIO {
   private final TalonFX motor1 = new TalonFX(Constants.Arm.MOTOR_1_ID);
   private final TalonFX motor2 = new TalonFX(Constants.Arm.MOTOR_2_ID);
+  private final StatusSignal<Angle> motor1Position = motor1.getPosition();
+  private final StatusSignal<Angle> motor2Position = motor2.getPosition();
 
   public ArmIOTalonFX() {
     configureMotor(motor1, Constants.Arm.MOTOR_1_INVERTED);
@@ -27,13 +32,10 @@ public class ArmIOTalonFX implements ArmSubsystem.ArmIO {
   }
 
   @Override
-  public double getMotor1Rotations() {
-    return motor1.getPosition().refresh().getValueAsDouble();
-  }
-
-  @Override
-  public double getMotor2Rotations() {
-    return motor2.getPosition().refresh().getValueAsDouble();
+  public ArmSubsystem.ArmEncoderPositions getEncoderPositions() {
+    BaseStatusSignal.refreshAll(motor1Position, motor2Position);
+    return new ArmSubsystem.ArmEncoderPositions(
+        motor1Position.getValueAsDouble(), motor2Position.getValueAsDouble());
   }
 
   @Override
