@@ -24,5 +24,9 @@ public final class Constants {
     public static final int motor4ID = 4;
 
     public static final boolean motor1Inverted = false;
+
+    public static final double voltage = 1.0;;
+    public static final double minAngle = 0.0;
+    public static final double maxAngle = 90.0;
   }
 }
