@@ -51,19 +51,19 @@ class ElevatorSubsystemTest {
   }
 
   @Test
-  void appliesOppositeOneVoltOutputsForExtensionAndRetraction() {
+  void appliesOppositeThreeVoltOutputsForExtensionAndRetraction() {
     FakeElevatorIO io = new FakeElevatorIO();
     io.motor1Rotations = -1.0;
     io.motor2Rotations = -5.0;
     ElevatorSubsystem elevator = new ElevatorSubsystem(io);
 
     elevator.extend();
-    assertEquals(1.0, io.motor1Voltage, 1e-9);
-    assertEquals(-1.0, io.motor2Voltage, 1e-9);
+    assertEquals(3.0, io.motor1Voltage, 1e-9);
+    assertEquals(-3.0, io.motor2Voltage, 1e-9);
 
     elevator.retract();
-    assertEquals(-1.0, io.motor1Voltage, 1e-9);
-    assertEquals(1.0, io.motor2Voltage, 1e-9);
+    assertEquals(-3.0, io.motor1Voltage, 1e-9);
+    assertEquals(3.0, io.motor2Voltage, 1e-9);
   }
 
   @Test
@@ -77,8 +77,8 @@ class ElevatorSubsystemTest {
     command.initialize();
     command.execute();
     assertFalse(command.isFinished());
-    assertEquals(1.0, io.motor1Voltage, 1e-9);
-    assertEquals(-1.0, io.motor2Voltage, 1e-9);
+    assertEquals(3.0, io.motor1Voltage, 1e-9);
+    assertEquals(-3.0, io.motor2Voltage, 1e-9);
 
     io.motor1Rotations = -3.4;
     elevator.periodic();
@@ -100,8 +100,8 @@ class ElevatorSubsystemTest {
     command.initialize();
     command.execute();
     assertFalse(command.isFinished());
-    assertEquals(-1.0, io.motor1Voltage, 1e-9);
-    assertEquals(1.0, io.motor2Voltage, 1e-9);
+    assertEquals(-3.0, io.motor1Voltage, 1e-9);
+    assertEquals(3.0, io.motor2Voltage, 1e-9);
 
     io.motor2Rotations = 0.0;
     elevator.periodic();
