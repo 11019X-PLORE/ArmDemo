@@ -26,8 +26,8 @@ public final class Constants {
     public static final boolean MOTOR_1_INVERTED = false;
     public static final boolean MOTOR_2_INVERTED = false;
 
-    public static final double DEFAULT_VOLTAGE = 1.0;
-    public static final double MAX_TEST_VOLTAGE = 3.0;
+    public static final double DEFAULT_VOLTAGE = 3.0;
+    public static final double MAX_TEST_VOLTAGE = 6.0;
 
     public static final double MIN_ANGLE_DEGREES = 0.0;
     public static final double MAX_ANGLE_DEGREES = 90.0;

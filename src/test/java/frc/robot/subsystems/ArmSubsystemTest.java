@@ -71,17 +71,31 @@ class ArmSubsystemTest {
   }
 
   @Test
-  void clampsDashboardVoltageAndAppliesTheRequestedDirection() {
+  void appliesTheRequestedThreeVoltsInBothDirections() {
     FakeArmIO io = new FakeArmIO();
     io.motor1Rotations = 20.0;
     io.motor2Rotations = 20.0;
-    ArmSubsystem arm = new ArmSubsystem(io, () -> 12.0, 40.0);
+    ArmSubsystem arm = new ArmSubsystem(io, () -> 3.0, 40.0);
 
     arm.moveUp();
     assertEquals(3.0, io.appliedVoltage, 1e-9);
 
     arm.moveDown();
     assertEquals(-3.0, io.appliedVoltage, 1e-9);
+  }
+
+  @Test
+  void clampsDashboardVoltageToSixVolts() {
+    FakeArmIO io = new FakeArmIO();
+    io.motor1Rotations = 20.0;
+    io.motor2Rotations = 20.0;
+    ArmSubsystem arm = new ArmSubsystem(io, () -> 12.0, 40.0);
+
+    arm.moveUp();
+    assertEquals(6.0, io.appliedVoltage, 1e-9);
+
+    arm.moveDown();
+    assertEquals(-6.0, io.appliedVoltage, 1e-9);
   }
 
   @Test
