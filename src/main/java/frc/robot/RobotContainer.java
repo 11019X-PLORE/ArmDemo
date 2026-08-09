@@ -7,6 +7,8 @@ package frc.robot;
 import frc.robot.Constants.OperatorConstants;
 import frc.robot.subsystems.ArmIOTalonFX;
 import frc.robot.subsystems.ArmSubsystem;
+import frc.robot.subsystems.ElevatorIOTalonFX;
+import frc.robot.subsystems.ElevatorSubsystem;
 import edu.wpi.first.wpilibj2.command.button.CommandPS5Controller;
 import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
@@ -23,6 +25,8 @@ public class RobotContainer {
   private final ArmSubsystem armSubsystem =
       new ArmSubsystem(
           new ArmIOTalonFX(), armVoltage, Constants.Arm.MOTOR_ROTATIONS_AT_MAX_ANGLE);
+  private final ElevatorSubsystem elevatorSubsystem =
+      new ElevatorSubsystem(new ElevatorIOTalonFX());
 
   private final CommandPS5Controller m_driverController =
       new CommandPS5Controller(OperatorConstants.kDriverControllerPort);
@@ -30,6 +34,7 @@ public class RobotContainer {
   /** The container for the robot. Contains subsystems, OI devices, and commands. */
   public RobotContainer() {
     armSubsystem.zeroEncoders();
+    elevatorSubsystem.zeroEncoders();
     configureBindings();
   }
 

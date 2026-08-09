@@ -39,5 +39,12 @@ public final class Constants {
     private Arm() {}
   }
 
+  public static class Elevator {
+    public static final int MOTOR_1_ID = 11;
+    public static final int MOTOR_2_ID = 12;
+
+    private Elevator() {}
+  }
+
   private Constants() {}
 }
