@@ -36,5 +36,7 @@ public class RobotContainer {
   private void configureBindings() {
     m_driverController.cross().onTrue(armSubsystem.moveToUpperLimitCommand());
     m_driverController.circle().onTrue(armSubsystem.moveToLowerLimitCommand());
+    m_driverController.L1().whileTrue(armSubsystem.motorOneDirectionTestCommand());
+    m_driverController.R1().whileTrue(armSubsystem.motorTwoDirectionTestCommand());
   }
 }

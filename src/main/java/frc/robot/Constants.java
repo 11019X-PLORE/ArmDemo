@@ -26,6 +26,7 @@ public final class Constants {
 
     public static final double DEFAULT_VOLTAGE = 1.0;
     public static final double MAX_TEST_VOLTAGE = 3.0;
+    public static final double DIRECTION_TEST_VOLTAGE = 1.0;
 
     public static final double MIN_ANGLE_DEGREES = 0.0;
     public static final double MAX_ANGLE_DEGREES = 90.0;

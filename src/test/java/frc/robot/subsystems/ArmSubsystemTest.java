@@ -142,10 +142,44 @@ class ArmSubsystemTest {
     assertEquals(0.0, io.appliedVoltage, 1e-9);
   }
 
+  @Test
+  void motorOneDirectionTestOnlyRunsWhileTheCommandIsHeld() {
+    FakeArmIO io = new FakeArmIO();
+    ArmSubsystem arm = new ArmSubsystem(io, () -> 1.0, 0.2);
+    Command command = arm.motorOneDirectionTestCommand();
+
+    command.initialize();
+    command.execute();
+    assertEquals(1.0, io.motor1AppliedVoltage, 1e-9);
+    assertEquals(0.0, io.motor2AppliedVoltage, 1e-9);
+
+    command.end(true);
+    assertEquals(0.0, io.motor1AppliedVoltage, 1e-9);
+    assertEquals(0.0, io.motor2AppliedVoltage, 1e-9);
+  }
+
+  @Test
+  void motorTwoDirectionTestOnlyRunsWhileTheCommandIsHeld() {
+    FakeArmIO io = new FakeArmIO();
+    ArmSubsystem arm = new ArmSubsystem(io, () -> 1.0, 0.2);
+    Command command = arm.motorTwoDirectionTestCommand();
+
+    command.initialize();
+    command.execute();
+    assertEquals(0.0, io.motor1AppliedVoltage, 1e-9);
+    assertEquals(1.0, io.motor2AppliedVoltage, 1e-9);
+
+    command.end(true);
+    assertEquals(0.0, io.motor1AppliedVoltage, 1e-9);
+    assertEquals(0.0, io.motor2AppliedVoltage, 1e-9);
+  }
+
   private static class FakeArmIO implements ArmSubsystem.ArmIO {
     double motor1Rotations;
     double motor2Rotations;
     double appliedVoltage;
+    double motor1AppliedVoltage;
+    double motor2AppliedVoltage;
 
     @Override
     public ArmSubsystem.ArmEncoderPositions getEncoderPositions() {
@@ -153,8 +187,10 @@ class ArmSubsystemTest {
     }
 
     @Override
-    public void setVoltage(double voltage) {
-      appliedVoltage = voltage;
+    public void setMotorVoltages(double motor1Voltage, double motor2Voltage) {
+      motor1AppliedVoltage = motor1Voltage;
+      motor2AppliedVoltage = motor2Voltage;
+      appliedVoltage = (motor1Voltage + motor2Voltage) / 2.0;
     }
 
     @Override

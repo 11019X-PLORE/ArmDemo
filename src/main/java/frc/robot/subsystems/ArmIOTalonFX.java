@@ -39,9 +39,9 @@ public class ArmIOTalonFX implements ArmSubsystem.ArmIO {
   }
 
   @Override
-  public void setVoltage(double voltage) {
-    motor1.setVoltage(voltage);
-    motor2.setVoltage(voltage);
+  public void setMotorVoltages(double motor1Voltage, double motor2Voltage) {
+    motor1.setVoltage(motor1Voltage);
+    motor2.setVoltage(motor2Voltage);
   }
 
   @Override
