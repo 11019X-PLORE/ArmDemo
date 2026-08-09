@@ -34,7 +34,12 @@ public class RobotContainer {
   }
 
   private void configureBindings() {
-    m_driverController.triangle().onTrue(armSubsystem.moveToUpperLimitCommand());
-    m_driverController.cross().onTrue(armSubsystem.moveToLowerLimitCommand());
+    // This controller reports Xbox-style raw button IDs in Driver Station: Y=4 and A=1.
+    m_driverController
+        .button(OperatorConstants.kArmUpButton)
+        .onTrue(armSubsystem.moveToUpperLimitCommand());
+    m_driverController
+        .button(OperatorConstants.kArmDownButton)
+        .onTrue(armSubsystem.moveToLowerLimitCommand());
   }
 }
