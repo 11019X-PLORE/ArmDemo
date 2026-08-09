@@ -16,9 +16,9 @@ public final class Constants {
   public static class OperatorConstants {
     public static final int kDriverControllerPort = 0;
     public static final int kArmUpButton = 4;
-    public static final int kArmDownButton = 1;
-    public static final int kElevatorExtendButton = 2;
-    public static final int kElevatorRetractButton = 3;
+    public static final int kArmDownButton = 2;
+    public static final int kElevatorExtendButton = 3;
+    public static final int kElevatorRetractButton = 1;
   }
 
   public static class Arm {
