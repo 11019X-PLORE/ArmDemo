@@ -26,10 +26,6 @@ public class ArmSubsystem extends SubsystemBase {
 
     void setMotorVoltages(double motor1Voltage, double motor2Voltage);
 
-    default void setVoltage(double voltage) {
-      setMotorVoltages(voltage, voltage);
-    }
-
     void zeroEncoders();
   }
 
@@ -37,7 +33,6 @@ public class ArmSubsystem extends SubsystemBase {
   private final DoubleSupplier voltageSupplier;
   private final OptionalDouble motorRotationsAtMaxAngle;
   private ArmEncoderPositions encoderPositions;
-  private double appliedVoltage;
   private double motor1AppliedVoltage;
   private double motor2AppliedVoltage;
 
@@ -143,7 +138,6 @@ public class ArmSubsystem extends SubsystemBase {
   private void applyMotorVoltages(double motor1Voltage, double motor2Voltage) {
     motor1AppliedVoltage = motor1Voltage;
     motor2AppliedVoltage = motor2Voltage;
-    appliedVoltage = (motor1Voltage + motor2Voltage) / 2.0;
     io.setMotorVoltages(motor1Voltage, motor2Voltage);
   }
 
@@ -168,7 +162,6 @@ public class ArmSubsystem extends SubsystemBase {
         isCalibrated()
             && getAngleDegrees(encoderPositions) >= Constants.Arm.MAX_ANGLE_DEGREES);
     Logger.recordOutput("Arm/RequestedVoltage", getRequestedVoltageMagnitude(), "volts");
-    Logger.recordOutput("Arm/AppliedVoltage", appliedVoltage, "volts");
     Logger.recordOutput("Arm/Motor1AppliedVoltage", motor1AppliedVoltage, "volts");
     Logger.recordOutput("Arm/Motor2AppliedVoltage", motor2AppliedVoltage, "volts");
     Logger.recordOutput(
