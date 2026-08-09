@@ -24,7 +24,7 @@ public class ArmSubsystem extends SubsystemBase {
   public interface ArmIO {
     ArmEncoderPositions getEncoderPositions();
 
-    void setMotorVoltages(double motor1Voltage, double motor2Voltage);
+    void setVoltage(double voltage);
 
     void zeroEncoders();
   }
@@ -33,8 +33,7 @@ public class ArmSubsystem extends SubsystemBase {
   private final DoubleSupplier voltageSupplier;
   private final OptionalDouble motorRotationsAtMaxAngle;
   private ArmEncoderPositions encoderPositions;
-  private double motor1AppliedVoltage;
-  private double motor2AppliedVoltage;
+  private double appliedVoltage;
 
   public ArmSubsystem(
       ArmIO io, DoubleSupplier voltageSupplier, double motorRotationsAtMaxAngle) {
@@ -104,22 +103,6 @@ public class ArmSubsystem extends SubsystemBase {
         .withName("ArmToLowerLimit");
   }
 
-  public Command motorOneDirectionTestCommand() {
-    return Commands.runEnd(
-            () -> applyMotorVoltages(Constants.Arm.DIRECTION_TEST_VOLTAGE, 0.0),
-            this::stop,
-            this)
-        .withName("ArmMotor1DirectionTest");
-  }
-
-  public Command motorTwoDirectionTestCommand() {
-    return Commands.runEnd(
-            () -> applyMotorVoltages(0.0, Constants.Arm.DIRECTION_TEST_VOLTAGE),
-            this::stop,
-            this)
-        .withName("ArmMotor2DirectionTest");
-  }
-
   public void stop() {
     applyVoltage(0.0);
   }
@@ -132,13 +115,8 @@ public class ArmSubsystem extends SubsystemBase {
   }
 
   private void applyVoltage(double voltage) {
-    applyMotorVoltages(voltage, voltage);
-  }
-
-  private void applyMotorVoltages(double motor1Voltage, double motor2Voltage) {
-    motor1AppliedVoltage = motor1Voltage;
-    motor2AppliedVoltage = motor2Voltage;
-    io.setMotorVoltages(motor1Voltage, motor2Voltage);
+    appliedVoltage = voltage;
+    io.setVoltage(voltage);
   }
 
   @Override
@@ -162,8 +140,7 @@ public class ArmSubsystem extends SubsystemBase {
         isCalibrated()
             && getAngleDegrees(encoderPositions) >= Constants.Arm.MAX_ANGLE_DEGREES);
     Logger.recordOutput("Arm/RequestedVoltage", getRequestedVoltageMagnitude(), "volts");
-    Logger.recordOutput("Arm/Motor1AppliedVoltage", motor1AppliedVoltage, "volts");
-    Logger.recordOutput("Arm/Motor2AppliedVoltage", motor2AppliedVoltage, "volts");
+    Logger.recordOutput("Arm/AppliedVoltage", appliedVoltage, "volts");
     Logger.recordOutput(
         "Arm/MotorRotationsAtMaxAngle", motorRotationsAtMaxAngle.orElse(0.0), "rotations");
   }
