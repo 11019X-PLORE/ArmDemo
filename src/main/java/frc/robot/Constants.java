@@ -17,6 +17,8 @@ public final class Constants {
     public static final int kDriverControllerPort = 0;
     public static final int kArmUpButton = 4;
     public static final int kArmDownButton = 1;
+    public static final int kElevatorExtendButton = 2;
+    public static final int kElevatorRetractButton = 3;
   }
 
   public static class Arm {
@@ -42,6 +44,11 @@ public final class Constants {
   public static class Elevator {
     public static final int MOTOR_1_ID = 11;
     public static final int MOTOR_2_ID = 12;
+
+    public static final double MOVEMENT_VOLTAGE = 1.0;
+    public static final double MIN_EXTENSION_ROTATIONS = 0.0;
+    public static final double MOTOR_1_MAX_EXTENSION_ROTATIONS = 3.4;
+    public static final double MOTOR_2_MAX_EXTENSION_ROTATIONS = 14.5;
 
     private Elevator() {}
   }

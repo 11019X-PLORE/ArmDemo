@@ -33,6 +33,12 @@ public class ElevatorIOTalonFX implements ElevatorSubsystem.ElevatorIO {
   }
 
   @Override
+  public void setMotorVoltages(double motor1Voltage, double motor2Voltage) {
+    motor1.setVoltage(motor1Voltage);
+    motor2.setVoltage(motor2Voltage);
+  }
+
+  @Override
   public void zeroEncoders() {
     motor1.setPosition(0.0);
     motor2.setPosition(0.0);

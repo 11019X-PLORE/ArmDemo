@@ -46,5 +46,11 @@ public class RobotContainer {
     m_driverController
         .button(OperatorConstants.kArmDownButton)
         .onTrue(armSubsystem.moveToLowerLimitCommand());
+    m_driverController
+        .button(OperatorConstants.kElevatorExtendButton)
+        .onTrue(elevatorSubsystem.moveToUpperLimitCommand());
+    m_driverController
+        .button(OperatorConstants.kElevatorRetractButton)
+        .onTrue(elevatorSubsystem.moveToLowerLimitCommand());
   }
 }
