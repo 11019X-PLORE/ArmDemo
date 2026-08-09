@@ -30,9 +30,9 @@ public final class Constants {
     public static final double MIN_ANGLE_DEGREES = 0.0;
     public static final double MAX_ANGLE_DEGREES = 90.0;
 
-    // Keep this at zero until the arm is manually moved from 0 to 90 degrees and the average
-    // TalonFX rotor position is read from AdvantageScope.
-    public static final double MOTOR_ROTATIONS_AT_MAX_ANGLE = 0.0;
+    // Measured by manually moving the arm from 0 to 90 degrees and reading the average TalonFX
+    // rotor position in AdvantageScope.
+    public static final double MOTOR_ROTATIONS_AT_MAX_ANGLE = 0.2;
 
     private Arm() {}
   }
