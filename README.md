@@ -10,7 +10,9 @@ The arm voltage can be tuned through NetworkTables. The elevator uses a fixed vo
 
 ### Safety Warning
 
-> **Before every deployment or robot-code restart, manually place both the arm and elevator at their physical zero positions.** The program resets all four TalonFX integrated encoders to zero during startup. Starting the robot away from the physical zero positions will make the software limits inaccurate and may damage the mechanisms.
+> **Before every roboRIO power-on, manually place both the arm and elevator at their physical zero positions.** After a full power cycle the TalonFX integrated encoders read zero on their own, so mechanisms that are not at their physical zero positions at power-on will make the software limits inaccurate and may damage the mechanisms.
+>
+> Robot-code restarts (redeploy or soft restart) do **not** re-zero the encoders: the TalonFX positions survive a code restart, so the software limits stay accurate even when the code is restarted mid-match with the mechanisms away from zero.
 
 Keep the robot disabled while positioning the mechanisms by hand. Stay clear of the arm and elevator whenever the robot is enabled.
 
@@ -31,10 +33,12 @@ The driver controller is connected to USB port 0. Although the code uses `Comman
 | ---: | --- | --- |
 | 4 | Raise arm | Moves smoothly to the configurable target angle (default 90°) and keeps holding there |
 | 2 | Lower arm | Moves smoothly to 0 degrees and keeps holding there |
+| 5 | Arm to middle | Moves smoothly to the middle working angle (default 45°) from whichever side the arm is on, then keeps holding there |
 | 3 | Extend elevator | Runs until either elevator motor reaches its own upper limit; only allowed after the arm has reached its target angle (default 90°) |
 | 1 | Retract elevator | Runs until either elevator motor reaches the zero-position lower limit; only allowed after the arm has reached its target angle (default 90°) |
+| 6 | Elevator to middle | Runs until either elevator motor reaches its own share of the middle working extension (default half travel), from whichever side it is on; only allowed after the arm has reached its target angle |
 
-Each binding uses `onTrue`, so one press starts the command and the button does not need to remain held. Whenever no movement command is running, a default hold command keeps the arm at its latched angle.
+Each binding uses `onTrue`, so one press starts the command and the button does not need to remain held. Whenever no movement command is running, a default hold command keeps the arm at its latched angle. Every movement command also records how long it ran; the duration is printed to the robot console and published as telemetry (`LastMoveDurationSeconds` / `LastMoveActionName`) for the spec's per-action timing records.
 
 ### Arm Control and Limits
 
@@ -42,6 +46,7 @@ Each binding uses `onTrue`, so one press starts the command and the button does 
 - Encoder measurement: average of both TalonFX integrated encoder positions
 - Minimum angle: `0°`
 - Maximum angle: `90°`
+- Middle working angle (button 5): `45°`, tolerance window `1.5°`
 - Calibrated travel from 0 to 90 degrees: `0.2` average motor rotations
 - Default voltage: `3V`
 - Maximum allowed voltage: `3V`
@@ -67,6 +72,18 @@ The controller never commands a setpoint outside `0–90°`, the output never ex
 
 **Through-bore encoder switch**: `USE_THROUGH_BORE_ENCODER` (default `false`) selects between the averaged TalonFX rotor positions and the absolute shaft encoder (`ArmIOThroughBore`). The DIO channel, gear ratio, and zero-offset constants are placeholders to fill in when the encoders arrive; switching removes the startup zeroing requirement.
 
+### Speed and Acceleration Limits
+
+Both mechanisms keep their validated open-loop voltage motion; the spec's "settable max speed / max acceleration" is layered on top as live-tunable safety ceilings:
+
+- **Acceleration limit**: movement voltages ramp at most a configurable number of volts per second (`Arm Voltage Slew (V/s)` / `Elevator Voltage Slew (V/s)`, default `60 V/s` — full voltage within about three 20 ms cycles, i.e. effectively the validated behavior). The ramp applies to the signed voltage, so a direction reversal passes through zero volts instead of snapping to the opposite polarity. The hold outputs are not ramped: they are already gentle by design, and the stop must stay instant.
+- **Speed limit**: when the measured motion already runs at the cap in the commanded direction, the movement voltage is cut to zero. The arm uses its filtered angle velocity against `Arm Max Speed (deg/s)` (default `60°/s`); the elevator compares each motor's extension velocity — normalized by its own travel so the two mechanisms stay coordinated — against `Elevator Max Travel (/s)` (default `1.5` full travels per second).
+- Setting any entry to `0` disables that limit; a mistyped (non-numeric or negative) entry falls back to its validated default instead of silently disabling the limit. All four entries are on NetworkTables for the tuning weeks.
+
+### Action Timing
+
+Every movement command (arm up/down/middle, elevator extend/retract/middle) measures its own runtime, prints `Arm action <name> took <t> s` (or the elevator equivalent) to the robot console, and publishes `LastMoveDurationSeconds` plus `LastMoveActionName` under `RealOutputs/Arm` / `RealOutputs/Elevator` — the numbers for the spec's per-action completion-time records.
+
 ### Elevator Control and Limits
 
 - Motors: CAN IDs 11 and 12
@@ -76,10 +93,11 @@ The controller never commands a setpoint outside `0–90°`, the output never ex
 - Lower limit: `0.0` rotations for both normalized encoder positions
 - Motor 1 upper limit: `3.4` normalized rotations
 - Motor 2 upper limit: `14.5` normalized rotations
+- Middle working extension (button 6): half of each motor's own travel (1.7 / 7.25 rotations), so the two mechanisms arrive together
 
 The elevator encoders are not averaged because the two mechanisms have different travel ratios. Each encoder is normalized independently so extension is positive. If either motor reaches its own upper or lower limit, both motors stop.
 
-**Arm interlock**: elevator commands are only scheduled after the arm has reached its target angle. The permission stays active while the arm rests near the top (the fade hold settles slightly below the target) and clears once the arm drops 10 degrees below it.
+**Arm interlock**: elevator commands are only scheduled after the arm has reached its target angle, and the permission is re-checked every cycle while the elevator moves — if the arm drops below the unlock margin mid-motion (e.g. the arm-down button is pressed, or the hold fails), the elevator command ends immediately and both motors stop. The permission stays active while the arm rests near the top (the fade hold settles slightly below the target) and clears once the arm drops 10 degrees below it.
 
 ### AdvantageScope Telemetry
 
@@ -99,6 +117,8 @@ Arm values are published under `RealOutputs/Arm`, including:
 - `RequestedVoltage`
 - `AppliedVoltage`
 - `MotorRotationsAtMaxAngle`
+- `LastMoveDurationSeconds`
+- `LastMoveActionName`
 
 Elevator values are published under `RealOutputs/Elevator`, including:
 
@@ -112,6 +132,10 @@ Elevator values are published under `RealOutputs/Elevator`, including:
 - `AtUpperLimit`
 - `Motor1MaxExtensionRotations`
 - `Motor2MaxExtensionRotations`
+- `Motor1TravelFractionPerSecond`
+- `Motor2TravelFractionPerSecond`
+- `LastMoveDurationSeconds`
+- `LastMoveActionName`
 
 ### Command Structure
 
@@ -171,7 +195,9 @@ ArmDemo 是 11019 X.PLORE 的 WPILib 2026 Java 项目。项目使用 Kraken X60 
 
 ### 安全警告
 
-> **每次部署代码或重启机器人程序前，必须人工将机械臂和 Elevator 放到物理零位。** 程序会在启动时将四个 TalonFX 内置编码器全部归零。如果机器人启动时机构不在物理零位，软件限位将不准确，并可能损坏机构。
+> **每次 roboRIO 上电前，必须人工将机械臂和 Elevator 放到物理零位。** 完全断电重启后 TalonFX 内置编码器会自行从零开始读数，如果上电时机构不在物理零位，软件限位将不准确，并可能损坏机构。
+>
+> 重启机器人程序（重新部署或软重启）**不会**重新归零编码器：TalonFX 位置在代码重启后保持不变，因此比赛中途软重启时，即使机构不在零位，软件限位依然准确。
 
 人工调整机构时必须保持机器人 Disabled。机器人 Enabled 后，所有人员都应远离机械臂和 Elevator 的运动范围。
 
@@ -192,10 +218,12 @@ ArmDemo 是 11019 X.PLORE 的 WPILib 2026 Java 项目。项目使用 Kraken X60 
 | ---: | --- | --- |
 | 4 | 机械臂上升 | 平滑移动到可配置目标角（默认 90 度）并持续保持 |
 | 2 | 机械臂下降 | 平滑移动到 0 度并持续保持 |
+| 5 | 机械臂中位 | 从任意一侧平滑移动到中间工作角（默认 45 度）并持续保持 |
 | 3 | Elevator 伸出 | 持续运行，直到任一 Elevator 电机到达自己的上限；仅当机械臂已到达目标角（默认 90 度）后才允许 |
 | 1 | Elevator 收回 | 持续运行，直到任一 Elevator 电机到达零位下限；仅当机械臂已到达目标角（默认 90 度）后才允许 |
+| 6 | Elevator 中位 | 从任意一侧运行，直到任一电机到达自己份额的中间工作行程（默认半行程）；仅当机械臂已到达目标角后才允许 |
 
-所有按键都使用 `onTrue` 绑定，因此按一次即可启动命令，不需要一直按住。只要没有运动命令在运行，默认保持命令就会让机械臂锁定在当前角度。
+所有按键都使用 `onTrue` 绑定，因此按一次即可启动命令，不需要一直按住。只要没有运动命令在运行，默认保持命令就会让机械臂锁定在当前角度。每个运动命令还会记录自己的运行时长：完成后在机器人控制台打印一行日志，并作为遥测量（`LastMoveDurationSeconds` / `LastMoveActionName`）发布——这就是规格里"每个动作记录完成时间"的数据来源。
 
 ### 机械臂控制与限位
 
@@ -203,6 +231,7 @@ ArmDemo 是 11019 X.PLORE 的 WPILib 2026 Java 项目。项目使用 Kraken X60 
 - 编码器测量：两个 TalonFX 内置编码器位置的平均值
 - 最小角度：`0°`
 - 最大角度：`90°`
+- 中间工作角（按键 5）：`45°`，到位窗口 `1.5°`
 - 从 0 到 90 度的标定行程：平均 `0.2` 电机圈数
 - 默认电压：`3V`
 - 最大允许电压：`3V`
@@ -228,6 +257,18 @@ ArmDemo 是 11019 X.PLORE 的 WPILib 2026 Java 项目。项目使用 Kraken X60 
 
 **Through-bore 编码器切换**：`USE_THROUGH_BORE_ENCODER`（默认 `false`）在"TalonFX 转子平均"与"轴端绝对编码器"（`ArmIOThroughBore`）之间切换。DIO 通道、速比、零位偏移常量为占位值，编码器到货后填入；切换后不再依赖启动归零。
 
+### 速度与加速度限制
+
+两套机构都保留验证过的开环电压运动；规格要求的"可设置并限制最大速度、最大加速度"以可在线调节的安全上限形式叠加在之上：
+
+- **加速度限制**：运动电压每秒最多变化可配置的伏特数（`Arm Voltage Slew (V/s)` / `Elevator Voltage Slew (V/s)`，默认 `60 V/s`——约三个 20 ms 周期内到达满电压，即实际等同于已验证的行为）。斜坡作用于带符号的电压，因此换向时电压会经过零点渐变，不会瞬间翻转到反极性。保持命令的输出不做斜坡：它本身变化就很柔和，而且停止必须保持即时。
+- **速度限制**：当测量到的运动在指令方向上已经达到上限时，运动电压立即归零。机械臂用滤波后的角速度对比 `Arm Max Speed (deg/s)`（默认 `60°/s`）；Elevator 把每个电机的伸出速度按各自行程归一化（保证两机构协同）后对比 `Elevator Max Travel (/s)`（默认每秒 1.5 倍全行程）。
+- 任何一项设为 `0` 即关闭该限制；误输入的非数值或负值会回退到已验证的默认值，而不会静默关闭限制。四项都在 NetworkTables 上，供调参周使用。
+
+### 动作计时
+
+每个运动命令（机械臂升/降/中位、Elevator 伸/收/中位）测量自己的运行时长，完成后在机器人控制台打印 `Arm action <名称> took <秒> s`（Elevator 同理），并在 `RealOutputs/Arm` / `RealOutputs/Elevator` 下发布 `LastMoveDurationSeconds` 和 `LastMoveActionName`——对应规格里"每个动作均记录完成时间"的要求。
+
 ### Elevator 控制与限位
 
 - 电机 CAN ID：11 和 12
@@ -237,10 +278,11 @@ ArmDemo 是 11019 X.PLORE 的 WPILib 2026 Java 项目。项目使用 Kraken X60 
 - 下限：两个方向修正后的编码器位置均以 `0.0` 圈为零位
 - 电机 1 上限：`3.4` 圈
 - 电机 2 上限：`14.5` 圈
+- 中间工作行程（按键 6）：各电机自身行程的一半（1.7 / 7.25 圈），两机构同步到位
 
 由于两个机构的行程比例不同，程序不会平均 Elevator 的两个编码器。两个编码器分别进行方向修正，使伸出方向显示为正值。任一电机到达自己的上限或下限时，两台电机都会停止。
 
-**机械臂联锁**：Elevator 命令只有在机械臂到达过目标角（默认 90 度）之后才会被调度。机械臂在顶部停留期间（渐隐保持会略低于目标角）联锁保持有效，一旦机械臂掉回目标角以下 `10 度` 即失效。
+**机械臂联锁**：Elevator 命令只有在机械臂到达过目标角（默认 90 度）之后才会被调度，并且电梯运动期间联锁**每个周期都会复核**——若机械臂在电梯运动中途掉到解锁余量以下（例如有人按了机械臂下降键、或保持失效），电梯命令立即结束、双电机停车。机械臂在顶部停留期间（渐隐保持会略低于目标角）联锁保持有效，一旦机械臂掉回目标角以下 `10 度` 即失效。
 
 ### AdvantageScope 遥测
 
@@ -260,6 +302,8 @@ ArmDemo 是 11019 X.PLORE 的 WPILib 2026 Java 项目。项目使用 Kraken X60 
 - `RequestedVoltage`
 - `AppliedVoltage`
 - `MotorRotationsAtMaxAngle`
+- `LastMoveDurationSeconds`
+- `LastMoveActionName`
 
 Elevator 数据发布在 `RealOutputs/Elevator` 下，包括：
 
@@ -273,6 +317,10 @@ Elevator 数据发布在 `RealOutputs/Elevator` 下，包括：
 - `AtUpperLimit`
 - `Motor1MaxExtensionRotations`
 - `Motor2MaxExtensionRotations`
+- `Motor1TravelFractionPerSecond`
+- `Motor2TravelFractionPerSecond`
+- `LastMoveDurationSeconds`
+- `LastMoveActionName`
 
 ### Command 结构
 

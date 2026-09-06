@@ -17,8 +17,10 @@ public final class Constants {
     public static final int DRIVER_CONTROLLER_PORT = 0;
     public static final int ARM_UP_BUTTON = 4;
     public static final int ARM_DOWN_BUTTON = 2;
+    public static final int ARM_MID_BUTTON = 5;
     public static final int ELEVATOR_EXTEND_BUTTON = 3;
     public static final int ELEVATOR_RETRACT_BUTTON = 1;
+    public static final int ELEVATOR_MID_BUTTON = 6;
 
     private OperatorConstants() {}
   }
@@ -39,6 +41,22 @@ public final class Constants {
     // Button 4 raises the arm to and holds this angle (spec allows 90 or 85). The hard
     // software limit stays at MAX_ANGLE_DEGREES regardless of this setting.
     public static final double TARGET_ANGLE_DEGREES = 90.0;
+
+    // Button 5 moves the arm to the middle working angle from whichever side it is on. The
+    // approach keeps the 0.8V floor in both directions (unlike the bottom limit, mid-travel is
+    // not a gravity-settling rest, so the arm must retain some downward authority to stop on it).
+    public static final double MID_ANGLE_DEGREES = 45.0;
+    public static final double MID_ANGLE_TOLERANCE_DEGREES = 1.5;
+
+    // Safety ceilings for the spec's "settable max speed / max acceleration". The arm keeps its
+    // validated open-loop voltage motion; these only bound it. Speed: when the filtered angle
+    // velocity reaches the cap while moving, the movement voltage is cut to zero. Acceleration:
+    // the movement voltage ramps at most this many volts per second. Both are live-tunable on
+    // NetworkTables; a value of 0 (or non-finite) disables that limit. The 60 V/s default
+    // reaches full voltage within about three 20 ms cycles, so it does not change the motion
+    // the team validated.
+    public static final double DEFAULT_MAX_SPEED_DEGREES_PER_SECOND = 60.0;
+    public static final double DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND = 60.0;
 
     // Measured by manually moving the arm from 0 to 90 degrees and reading the average TalonFX
     // rotor position in AdvantageScope.
@@ -98,6 +116,20 @@ public final class Constants {
     public static final double MIN_EXTENSION_ROTATIONS = 0.0;
     public static final double MOTOR_1_MAX_EXTENSION_ROTATIONS = 3.4;
     public static final double MOTOR_2_MAX_EXTENSION_ROTATIONS = 14.5;
+
+    // Button 6 moves the elevator to the middle working extension from whichever side it is
+    // on, expressed as a fraction of each motor's own travel so the two mechanisms (3.4 vs
+    // 14.5 rotations) stay coordinated.
+    public static final double MID_EXTENSION_FRACTION = 0.5;
+
+    // Same spec ceilings as the arm, in elevator terms. Speed: each motor's extension is
+    // normalized by its own travel, and when the faster motor's fraction-per-second reaches
+    // the cap while moving, both movement voltages are cut to zero. Acceleration: movement
+    // voltages ramp at most this many volts per second. Live-tunable on NetworkTables; 0 or
+    // non-finite disables. The 60 V/s default is effectively instant at 2V and does not change
+    // the validated motion.
+    public static final double DEFAULT_MAX_TRAVEL_FRACTION_PER_SECOND = 1.5;
+    public static final double DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND = 60.0;
 
     private Elevator() {}
   }
