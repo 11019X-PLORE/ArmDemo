@@ -682,14 +682,16 @@ class ArmSubsystemTest {
     assertTrue(arm.getLastMoveDurationSeconds() >= 0.0);
   }
 
-  private static class FakeArmIO implements ArmSubsystem.ArmIO {
+  private static class FakeArmIO implements ArmIO {
     double motor1Rotations;
     double motor2Rotations;
     double appliedVoltage;
 
     @Override
-    public ArmSubsystem.ArmEncoderPositions getEncoderPositions() {
-      return new ArmSubsystem.ArmEncoderPositions(motor1Rotations, motor2Rotations);
+    public void updateInputs(ArmIO.ArmIOInputs inputs) {
+      inputs.motor1Rotations = motor1Rotations;
+      inputs.motor2Rotations = motor2Rotations;
+      inputs.appliedVolts = appliedVoltage;
     }
 
     @Override

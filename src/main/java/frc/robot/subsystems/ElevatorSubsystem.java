@@ -13,36 +13,22 @@ import frc.robot.Constants;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
+import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
 public class ElevatorSubsystem extends SubsystemBase {
   private static final double MINIMUM_VELOCITY_TIMESTEP_SECONDS = 1e-6;
   private static final double VELOCITY_FILTER_ALPHA = 0.3;
 
-  public record ElevatorEncoderPositions(double motor1Rotations, double motor2Rotations) {
-    public double motor1ExtensionRotations() {
-      return -motor1Rotations;
-    }
-
-    public double motor2ExtensionRotations() {
-      return -motor2Rotations;
-    }
-  }
-
-  public interface ElevatorIO {
-    ElevatorEncoderPositions getEncoderPositions();
-
-    void setMotorVoltages(double motor1Voltage, double motor2Voltage);
-
-    void zeroEncoders();
-  }
-
   private final ElevatorIO io;
+  // Sensor inputs: filled by io.updateInputs() once per cycle, logged wholesale for replay.
+  private final ElevatorIOInputsAutoLogged inputs = new ElevatorIOInputsAutoLogged();
   private final BooleanSupplier armPermissionSupplier;
+  // Tuning inputs: polled once per cycle (see pollTunables) into the sanitized snapshots below.
+  // The supplier fields are a test seam — production uses the LoggedNetworkNumber constructors.
   private final DoubleSupplier maxTravelFractionPerSecondSupplier;
   private final DoubleSupplier voltageSlewVoltsPerSecondSupplier;
-  private ElevatorEncoderPositions encoderPositions;
-  private double motor1AppliedVoltage;
-  private double motor2AppliedVoltage;
+  private double maxTravelFractionPerSecond;
+  private double voltageSlewVoltsPerSecond;
   private double previousMotor1ExtensionFraction;
   private double previousMotor2ExtensionFraction;
   private double previousTimestampSeconds;
@@ -57,11 +43,30 @@ public class ElevatorSubsystem extends SubsystemBase {
   private String lastMoveActionName = "";
   private boolean midMovementIsExtension;
 
-  public ElevatorSubsystem(ElevatorIO io) {
+  /** Production constructor: the subsystem owns its NetworkTables tuning entries. */
+  public ElevatorSubsystem(ElevatorIO io, BooleanSupplier armPermissionSupplier) {
+    this(
+        io,
+        armPermissionSupplier,
+        tunable(
+            "/SmartDashboard/Elevator Max Travel (/s)",
+            Constants.Elevator.DEFAULT_MAX_TRAVEL_FRACTION_PER_SECOND),
+        tunable(
+            "/SmartDashboard/Elevator Voltage Slew (V/s)",
+            Constants.Elevator.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND));
+  }
+
+  private static DoubleSupplier tunable(String key, double defaultValue) {
+    LoggedNetworkNumber entry = new LoggedNetworkNumber(key, defaultValue);
+    return entry::get;
+  }
+
+  // Test seams (package-private): constant suppliers instead of NetworkTables entries.
+  ElevatorSubsystem(ElevatorIO io) {
     this(io, () -> true, () -> 0.0, () -> 0.0);
   }
 
-  public ElevatorSubsystem(
+  ElevatorSubsystem(
       ElevatorIO io,
       DoubleSupplier maxTravelFractionPerSecondSupplier,
       DoubleSupplier voltageSlewVoltsPerSecondSupplier) {
@@ -73,34 +78,29 @@ public class ElevatorSubsystem extends SubsystemBase {
    *     is refused while it is false, and a running movement command ends (stopping both
    *     motors) the moment it turns false — the elevator never keeps moving with the arm down
    */
-  public ElevatorSubsystem(
+  ElevatorSubsystem(
       ElevatorIO io,
       BooleanSupplier armPermissionSupplier,
       DoubleSupplier maxTravelFractionPerSecondSupplier,
       DoubleSupplier voltageSlewVoltsPerSecondSupplier) {
     this.io = io;
     this.armPermissionSupplier = armPermissionSupplier;
-    this.maxTravelFractionPerSecondSupplier =
-        fallbackWhenInvalid(
-            maxTravelFractionPerSecondSupplier,
-            Constants.Elevator.DEFAULT_MAX_TRAVEL_FRACTION_PER_SECOND);
-    this.voltageSlewVoltsPerSecondSupplier =
-        fallbackWhenInvalid(
-            voltageSlewVoltsPerSecondSupplier,
-            Constants.Elevator.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND);
-    encoderPositions = io.getEncoderPositions();
-    previousMotor1ExtensionFraction = motor1TravelFraction(encoderPositions);
-    previousMotor2ExtensionFraction = motor2TravelFraction(encoderPositions);
+    this.maxTravelFractionPerSecondSupplier = maxTravelFractionPerSecondSupplier;
+    this.voltageSlewVoltsPerSecondSupplier = voltageSlewVoltsPerSecondSupplier;
+    pollTunables();
+    io.updateInputs(inputs);
+    previousMotor1ExtensionFraction = motor1TravelFraction();
+    previousMotor2ExtensionFraction = motor2TravelFraction();
     previousTimestampSeconds = Timer.getFPGATimestamp();
     lastMovementTimestampSeconds = previousTimestampSeconds;
   }
 
   public double getMotor1ExtensionRotations() {
-    return encoderPositions.motor1ExtensionRotations();
+    return -inputs.motor1Rotations;
   }
 
   public double getMotor2ExtensionRotations() {
-    return encoderPositions.motor2ExtensionRotations();
+    return -inputs.motor2Rotations;
   }
 
   public boolean atUpperLimit() {
@@ -211,8 +211,7 @@ public class ElevatorSubsystem extends SubsystemBase {
           moveStartTimestampSeconds = Timer.getFPGATimestamp();
           // The mid command picks its direction once, at start: extending from below the
           // middle, retracting from above it.
-          midMovementIsExtension =
-              averageTravelFraction() <= Constants.Elevator.MID_EXTENSION_FRACTION;
+          midMovementIsExtension = averageTravelFraction() <= Constants.Elevator.MID_EXTENSION_FRACTION;
         },
         moveStep,
         interrupted -> {
@@ -231,7 +230,9 @@ public class ElevatorSubsystem extends SubsystemBase {
   public void zeroEncoders() {
     stop();
     io.zeroEncoders();
-    encoderPositions = new ElevatorEncoderPositions(0.0, 0.0);
+    // Hardware takes a cycle to report the new zero; assume it immediately.
+    inputs.motor1Rotations = 0.0;
+    inputs.motor2Rotations = 0.0;
     previousMotor1ExtensionFraction = 0.0;
     previousMotor2ExtensionFraction = 0.0;
     motor1ExtensionFractionVelocityPerSecond = 0.0;
@@ -244,7 +245,7 @@ public class ElevatorSubsystem extends SubsystemBase {
    * voltage (motor 1's view; motor 2 mirrors it), so a direction reversal passes through
    * zero instead of snapping to the opposite polarity, and the speed limit cuts the voltage
    * to zero when the faster motor already travels at the cap in the commanded direction.
-   * Both are NetworkTables-tunable; 0 or non-finite falls back to the validated default.
+   * Both are NetworkTables-tunable; 0 disables.
    */
   private void applyMovementVoltages(double targetMagnitude, boolean extending) {
     double timestampSeconds = Timer.getFPGATimestamp();
@@ -252,10 +253,7 @@ public class ElevatorSubsystem extends SubsystemBase {
     double targetMotor1Voltage = extending ? targetMagnitude : -targetMagnitude;
     double slewedMotor1Voltage =
         slewTowards(
-            targetMotor1Voltage,
-            lastMovementVoltage,
-            dtSeconds,
-            readPositiveSupplier(voltageSlewVoltsPerSecondSupplier));
+            targetMotor1Voltage, lastMovementVoltage, dtSeconds, voltageSlewVoltsPerSecond);
     double fasterMotorFractionPerSecond =
         extending
             ? Math.max(
@@ -265,9 +263,7 @@ public class ElevatorSubsystem extends SubsystemBase {
                 motor2ExtensionFractionVelocityPerSecond);
     double limitedMotor1Voltage =
         voltageAfterSpeedCap(
-            slewedMotor1Voltage,
-            fasterMotorFractionPerSecond,
-            readPositiveSupplier(maxTravelFractionPerSecondSupplier));
+            slewedMotor1Voltage, fasterMotorFractionPerSecond, maxTravelFractionPerSecond);
     lastMovementVoltage = limitedMotor1Voltage;
     lastMovementTimestampSeconds = timestampSeconds;
     applyMotorVoltages(limitedMotor1Voltage, -limitedMotor1Voltage);
@@ -294,21 +290,23 @@ public class ElevatorSubsystem extends SubsystemBase {
     return travelFractionPerSecondInMotionDirection >= maxFraction ? 0.0 : voltage;
   }
 
-  private static double readPositiveSupplier(DoubleSupplier supplier) {
-    double value = supplier.getAsDouble();
-    return Double.isFinite(value) ? Math.max(value, 0.0) : 0.0;
+  private void pollTunables() {
+    // One sanitized read per tuning entry per cycle. A mistyped dashboard value (non-finite
+    // or negative) falls back to the validated default instead of silently disabling a
+    // safety limit; zero remains a deliberate "limit off" switch.
+    maxTravelFractionPerSecond =
+        pollNonNegative(
+            maxTravelFractionPerSecondSupplier,
+            Constants.Elevator.DEFAULT_MAX_TRAVEL_FRACTION_PER_SECOND);
+    voltageSlewVoltsPerSecond =
+        pollNonNegative(
+            voltageSlewVoltsPerSecondSupplier,
+            Constants.Elevator.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND);
   }
 
-  /**
-   * Wraps a NetworkTables limit so an invalid reading (non-finite or negative — a mistyped
-   * dashboard value) falls back to the validated default instead of silently disabling the
-   * safety ceiling. Zero remains a deliberate "limit off" switch.
-   */
-  private static DoubleSupplier fallbackWhenInvalid(DoubleSupplier supplier, double fallback) {
-    return () -> {
-      double value = supplier.getAsDouble();
-      return Double.isFinite(value) && value >= 0.0 ? value : fallback;
-    };
+  private static double pollNonNegative(DoubleSupplier supplier, double fallback) {
+    double value = supplier.getAsDouble();
+    return Double.isFinite(value) && value >= 0.0 ? value : fallback;
   }
 
   private static double motor1MidExtensionRotations() {
@@ -321,38 +319,43 @@ public class ElevatorSubsystem extends SubsystemBase {
         * Constants.Elevator.MID_EXTENSION_FRACTION;
   }
 
-  private static double motor1TravelFraction(ElevatorEncoderPositions positions) {
-    return positions.motor1ExtensionRotations()
-        / Constants.Elevator.MOTOR_1_MAX_EXTENSION_ROTATIONS;
+  private static double motor1TravelFraction(double extensionRotations) {
+    return extensionRotations / Constants.Elevator.MOTOR_1_MAX_EXTENSION_ROTATIONS;
   }
 
-  private static double motor2TravelFraction(ElevatorEncoderPositions positions) {
-    return positions.motor2ExtensionRotations()
-        / Constants.Elevator.MOTOR_2_MAX_EXTENSION_ROTATIONS;
+  private static double motor2TravelFraction(double extensionRotations) {
+    return extensionRotations / Constants.Elevator.MOTOR_2_MAX_EXTENSION_ROTATIONS;
+  }
+
+  private double motor1TravelFraction() {
+    return motor1TravelFraction(getMotor1ExtensionRotations());
+  }
+
+  private double motor2TravelFraction() {
+    return motor2TravelFraction(getMotor2ExtensionRotations());
   }
 
   /** Average of both motors' fractions of full travel; above 0.5 means past the middle. */
   private double averageTravelFraction() {
-    return (motor1TravelFraction(encoderPositions) + motor2TravelFraction(encoderPositions))
-        / 2.0;
+    return (motor1TravelFraction() + motor2TravelFraction()) / 2.0;
   }
 
   private void applyMotorVoltages(double motor1Voltage, double motor2Voltage) {
-    motor1AppliedVoltage = motor1Voltage;
-    motor2AppliedVoltage = motor2Voltage;
     io.setMotorVoltages(motor1Voltage, motor2Voltage);
   }
 
   @Override
   public void periodic() {
-    encoderPositions = io.getEncoderPositions();
+    // Poll the tuning entries first: one sanitized read per entry per cycle, shared by every
+    // consumer below (the same once-per-cycle pattern the sensor inputs follow).
+    pollTunables();
+    io.updateInputs(inputs);
+    Logger.processInputs("Elevator", inputs);
     double timestampSeconds = Timer.getFPGATimestamp();
     double dtSeconds = timestampSeconds - previousTimestampSeconds;
     if (dtSeconds > MINIMUM_VELOCITY_TIMESTEP_SECONDS) {
-      double motor1RawVelocity =
-          (motor1TravelFraction(encoderPositions) - previousMotor1ExtensionFraction) / dtSeconds;
-      double motor2RawVelocity =
-          (motor2TravelFraction(encoderPositions) - previousMotor2ExtensionFraction) / dtSeconds;
+      double motor1RawVelocity = (motor1TravelFraction() - previousMotor1ExtensionFraction) / dtSeconds;
+      double motor2RawVelocity = (motor2TravelFraction() - previousMotor2ExtensionFraction) / dtSeconds;
       // Low-pass the finite-difference velocities so encoder quantization cannot trip the
       // speed ceiling with per-cycle spikes (same filter the arm uses).
       motor1ExtensionFractionVelocityPerSecond =
@@ -361,25 +364,23 @@ public class ElevatorSubsystem extends SubsystemBase {
       motor2ExtensionFractionVelocityPerSecond =
           VELOCITY_FILTER_ALPHA * motor2RawVelocity
               + (1.0 - VELOCITY_FILTER_ALPHA) * motor2ExtensionFractionVelocityPerSecond;
-      previousMotor1ExtensionFraction = motor1TravelFraction(encoderPositions);
-      previousMotor2ExtensionFraction = motor2TravelFraction(encoderPositions);
+      previousMotor1ExtensionFraction = motor1TravelFraction();
+      previousMotor2ExtensionFraction = motor2TravelFraction();
       previousTimestampSeconds = timestampSeconds;
     }
 
     Logger.recordOutput(
         "Elevator/Motor1ExtensionRotations",
-        encoderPositions.motor1ExtensionRotations(),
+        getMotor1ExtensionRotations(),
         "rotations");
     Logger.recordOutput(
         "Elevator/Motor2ExtensionRotations",
-        encoderPositions.motor2ExtensionRotations(),
+        getMotor2ExtensionRotations(),
         "rotations");
-    Logger.recordOutput(
-        "Elevator/RawMotor1Rotations", encoderPositions.motor1Rotations(), "rotations");
-    Logger.recordOutput(
-        "Elevator/RawMotor2Rotations", encoderPositions.motor2Rotations(), "rotations");
-    Logger.recordOutput("Elevator/Motor1AppliedVoltage", motor1AppliedVoltage, "volts");
-    Logger.recordOutput("Elevator/Motor2AppliedVoltage", motor2AppliedVoltage, "volts");
+    Logger.recordOutput("Elevator/RawMotor1Rotations", inputs.motor1Rotations, "rotations");
+    Logger.recordOutput("Elevator/RawMotor2Rotations", inputs.motor2Rotations, "rotations");
+    Logger.recordOutput("Elevator/Motor1AppliedVoltage", inputs.motor1AppliedVolts, "volts");
+    Logger.recordOutput("Elevator/Motor2AppliedVoltage", inputs.motor2AppliedVolts, "volts");
     Logger.recordOutput("Elevator/AtLowerLimit", atLowerLimit());
     Logger.recordOutput("Elevator/AtUpperLimit", atUpperLimit());
     Logger.recordOutput(

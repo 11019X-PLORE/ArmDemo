@@ -160,9 +160,12 @@ class ElevatorSubsystemTest {
     elevator.extend();
     assertEquals(2.0, io.motor1Voltage, 0.1);
 
-    // Then reverse with a slow 6 V/s ramp: the next call is microseconds later, so the
-    // voltage must still be near +2V (heading for -2V through zero), not snapped to -2V.
+    // Then reverse with a slow 6 V/s ramp: tuning values are polled once per cycle, so the
+    // periodic() call is when the new rate takes effect — and the next retract is
+    // microseconds later, meaning the voltage must still be near +2V (heading for -2V
+    // through zero), not snapped to -2V.
     slewRate[0] = 6.0;
+    elevator.periodic();
     elevator.retract();
     assertEquals(2.0, io.motor1Voltage, 0.1);
     assertEquals(-io.motor1Voltage, io.motor2Voltage, 1e-9);
@@ -281,15 +284,18 @@ class ElevatorSubsystemTest {
     assertEquals(0.0, io.motor1Voltage, 1e-9);
   }
 
-  private static class FakeElevatorIO implements ElevatorSubsystem.ElevatorIO {
+  private static class FakeElevatorIO implements ElevatorIO {
     double motor1Rotations;
     double motor2Rotations;
     double motor1Voltage;
     double motor2Voltage;
 
     @Override
-    public ElevatorSubsystem.ElevatorEncoderPositions getEncoderPositions() {
-      return new ElevatorSubsystem.ElevatorEncoderPositions(motor1Rotations, motor2Rotations);
+    public void updateInputs(ElevatorIO.ElevatorIOInputs inputs) {
+      inputs.motor1Rotations = motor1Rotations;
+      inputs.motor2Rotations = motor2Rotations;
+      inputs.motor1AppliedVolts = motor1Voltage;
+      inputs.motor2AppliedVolts = motor2Voltage;
     }
 
     @Override

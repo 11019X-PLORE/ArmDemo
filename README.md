@@ -141,6 +141,16 @@ Elevator values are published under `RealOutputs/Elevator`, including:
 
 The movement commands are small command factories inside `ArmSubsystem` and `ElevatorSubsystem`. They use WPILib `Commands.runEnd(...)`, stop when a limit condition becomes true, and stop the motors when the command finishes or is interrupted. `ArmSubsystem` also provides `holdCurrentPositionCommand()` (built with `Commands.startRun(...)`), which is registered as the arm's default command so the arm is always actively held while no movement command runs. Because no standalone command classes are currently required, a separate `commands` package is not used.
 
+### Data Flow (AdvantageKit IO Pattern)
+
+Each mechanism follows one data-flow pattern: **hardware → IO → subsystem → hardware**.
+
+- `ArmIO` / `ElevatorIO` (top-level interfaces) define the hardware contract: an `updateInputs(inputs)` poll that fills an `@AutoLog` inputs container once per cycle, plus the output setters (`setVoltage`, `zeroEncoders`).
+- `ArmIOTalonFX` / `ElevatorIOTalonFX` are the real-hardware implementations — all Phoenix 6 details live there; `ArmIOThroughBore` is the drop-in absolute-encoder variant.
+- Each subsystem's `periodic()` runs exactly once per 20 ms loop and does three things in order: **poll** the NetworkTables tuning entries (sanitized once, shared by the whole cycle), **poll** the sensors via `io.updateInputs(inputs)` and log them with `Logger.processInputs`, then run the control logic against those snapshots.
+- `RobotContainer` is wiring only: which IO implementation backs each subsystem, the arm→elevator interlock connection, and the button bindings. It holds no tuning data.
+- Test doubles (`FakeArmIO`, `FakeElevatorIO`) implement the same interfaces with plain fields, so all subsystem logic is tested without hardware.
+
 ### Build, Test, and Deploy
 
 Requirements:
@@ -176,9 +186,11 @@ src/main/java/frc/robot/
 ├── Robot.java
 ├── RobotContainer.java
 └── subsystems/
+    ├── ArmIO.java
     ├── ArmIOThroughBore.java
     ├── ArmIOTalonFX.java
     ├── ArmSubsystem.java
+    ├── ElevatorIO.java
     ├── ElevatorIOTalonFX.java
     └── ElevatorSubsystem.java
 ```
@@ -326,6 +338,16 @@ Elevator 数据发布在 `RealOutputs/Elevator` 下，包括：
 
 运动命令通过 `ArmSubsystem` 和 `ElevatorSubsystem` 内的小型命令工厂创建。它们使用 WPILib 的 `Commands.runEnd(...)`，在限位条件成立时结束，并在命令正常结束或被中断时停止电机。`ArmSubsystem` 还提供 `holdCurrentPositionCommand()`（使用 `Commands.startRun(...)` 构建），并被注册为机械臂的默认命令，保证没有运动命令运行时机械臂始终被主动保持。当前不需要独立的 Command 类，因此项目没有使用单独的 `commands` 包。
 
+### 数据流（AdvantageKit IO 模式）
+
+每个机构都遵循同一条数据流：**硬件 → IO → 子系统 → 硬件**。
+
+- `ArmIO` / `ElevatorIO`（顶层接口）定义硬件契约：一个每周期调用一次的 `updateInputs(inputs)` 轮询，把传感器值填进 `@AutoLog` 输入容器；加上输出方法（`setVoltage`、`zeroEncoders`）。
+- `ArmIOTalonFX` / `ElevatorIOTalonFX` 是真机实现——所有 Phoenix 6 细节都锁在这两个文件里；`ArmIOThroughBore` 是即插即用的绝对编码器变体。
+- 每个子系统的 `periodic()` 在 20 ms 循环里恰好执行一次，按固定顺序做三件事：**轮询** NetworkTables 调参项（每周期消毒一次、全周期共享同一份值），通过 `io.updateInputs(inputs)` **轮询**传感器并用 `Logger.processInputs` 整体记录，然后基于这些快照运行控制逻辑。
+- `RobotContainer` 只负责接线：每个子系统用哪个 IO 实现、机械臂到 Elevator 的联锁连接、以及按键绑定。它不持有任何调参数据。
+- 测试替身（`FakeArmIO`、`FakeElevatorIO`）用普通字段实现同样的接口，因此全部子系统逻辑都可以在没有硬件的情况下测试。
+
 ### 构建、测试与部署
 
 环境要求：
@@ -361,9 +383,11 @@ src/main/java/frc/robot/
 ├── Robot.java
 ├── RobotContainer.java
 └── subsystems/
+    ├── ArmIO.java
     ├── ArmIOThroughBore.java
     ├── ArmIOTalonFX.java
     ├── ArmSubsystem.java
+    ├── ElevatorIO.java
     ├── ElevatorIOTalonFX.java
     └── ElevatorSubsystem.java
 ```

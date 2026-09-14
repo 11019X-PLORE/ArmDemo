@@ -14,6 +14,7 @@ import frc.robot.Constants;
 import java.util.OptionalDouble;
 import java.util.function.DoubleSupplier;
 import org.littletonrobotics.junction.Logger;
+import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
 public class ArmSubsystem extends SubsystemBase {
   private static final double MINIMUM_VALID_CALIBRATION_ROTATIONS = 1e-6;
@@ -21,33 +22,22 @@ public class ArmSubsystem extends SubsystemBase {
   private static final double VELOCITY_FILTER_ALPHA = 0.3;
   private static final double HOLD_ANGLE_FILTER_ALPHA = 0.2;
 
-  public record ArmEncoderPositions(double motor1Rotations, double motor2Rotations) {
-    public double averageRotations() {
-      return (motor1Rotations + motor2Rotations) / 2.0;
-    }
-
-    public double differenceRotations() {
-      return Math.abs(motor1Rotations - motor2Rotations);
-    }
-  }
-
-  public interface ArmIO {
-    ArmEncoderPositions getEncoderPositions();
-
-    void setVoltage(double voltage);
-
-    void zeroEncoders();
-  }
-
   private final ArmIO io;
+  // Sensor inputs: filled by io.updateInputs() once per cycle, logged wholesale for replay.
+  private final ArmIOInputsAutoLogged inputs = new ArmIOInputsAutoLogged();
+  // Tuning inputs: polled once per cycle (see pollTunables) into the sanitized snapshots below,
+  // so every consumer in a cycle sees the same value and validation lives in one place. The
+  // supplier fields are a test seam — production uses the LoggedNetworkNumber constructors.
   private final DoubleSupplier voltageSupplier;
   private final DoubleSupplier holdVoltageSupplier;
   private final DoubleSupplier maxSpeedDegreesPerSecondSupplier;
   private final DoubleSupplier voltageSlewVoltsPerSecondSupplier;
+  private double requestedVoltageVolts;
+  private double holdVoltageVolts;
+  private double maxSpeedDegreesPerSecond;
+  private double voltageSlewVoltsPerSecond;
   private final double targetAngleDegrees;
   private final OptionalDouble motorRotationsAtMaxAngle;
-  private ArmEncoderPositions encoderPositions;
-  private double appliedVoltage;
   private double holdSetpointDegrees;
   private boolean holdNudgeActive;
   private double previousAngleDegrees;
@@ -65,12 +55,37 @@ public class ArmSubsystem extends SubsystemBase {
   private double lastMoveDurationSeconds = -1.0;
   private String lastMoveActionName = "";
 
-  public ArmSubsystem(
-      ArmIO io, DoubleSupplier voltageSupplier, double motorRotationsAtMaxAngle) {
+  /** Production constructor: the subsystem owns its NetworkTables tuning entries. */
+  public ArmSubsystem(ArmIO io, double motorRotationsAtMaxAngle) {
+    this(io, motorRotationsAtMaxAngle, Constants.Arm.TARGET_ANGLE_DEGREES);
+  }
+
+  public ArmSubsystem(ArmIO io, double motorRotationsAtMaxAngle, double targetAngleDegrees) {
+    this(
+        io,
+        tunable("/SmartDashboard/Arm Voltage", Constants.Arm.DEFAULT_VOLTAGE),
+        tunable("/SmartDashboard/Arm Hold Voltage", Constants.Arm.HOLD_VOLTAGE),
+        targetAngleDegrees,
+        motorRotationsAtMaxAngle,
+        tunable(
+            "/SmartDashboard/Arm Max Speed (deg/s)",
+            Constants.Arm.DEFAULT_MAX_SPEED_DEGREES_PER_SECOND),
+        tunable(
+            "/SmartDashboard/Arm Voltage Slew (V/s)",
+            Constants.Arm.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND));
+  }
+
+  private static DoubleSupplier tunable(String key, double defaultValue) {
+    LoggedNetworkNumber entry = new LoggedNetworkNumber(key, defaultValue);
+    return entry::get;
+  }
+
+  // Test seams (package-private): constant suppliers instead of NetworkTables entries.
+  ArmSubsystem(ArmIO io, DoubleSupplier voltageSupplier, double motorRotationsAtMaxAngle) {
     this(io, voltageSupplier, () -> Constants.Arm.HOLD_VOLTAGE, motorRotationsAtMaxAngle);
   }
 
-  public ArmSubsystem(
+  ArmSubsystem(
       ArmIO io,
       DoubleSupplier voltageSupplier,
       DoubleSupplier holdVoltageSupplier,
@@ -83,7 +98,7 @@ public class ArmSubsystem extends SubsystemBase {
         motorRotationsAtMaxAngle);
   }
 
-  public ArmSubsystem(
+  ArmSubsystem(
       ArmIO io,
       DoubleSupplier voltageSupplier,
       DoubleSupplier holdVoltageSupplier,
@@ -99,7 +114,7 @@ public class ArmSubsystem extends SubsystemBase {
         () -> 0.0);
   }
 
-  public ArmSubsystem(
+  ArmSubsystem(
       ArmIO io,
       DoubleSupplier voltageSupplier,
       DoubleSupplier holdVoltageSupplier,
@@ -116,7 +131,7 @@ public class ArmSubsystem extends SubsystemBase {
         voltageSlewVoltsPerSecondSupplier);
   }
 
-  public ArmSubsystem(
+  ArmSubsystem(
       ArmIO io,
       DoubleSupplier voltageSupplier,
       DoubleSupplier holdVoltageSupplier,
@@ -127,14 +142,8 @@ public class ArmSubsystem extends SubsystemBase {
     this.io = io;
     this.voltageSupplier = voltageSupplier;
     this.holdVoltageSupplier = holdVoltageSupplier;
-    this.maxSpeedDegreesPerSecondSupplier =
-        fallbackWhenInvalid(
-            maxSpeedDegreesPerSecondSupplier,
-            Constants.Arm.DEFAULT_MAX_SPEED_DEGREES_PER_SECOND);
-    this.voltageSlewVoltsPerSecondSupplier =
-        fallbackWhenInvalid(
-            voltageSlewVoltsPerSecondSupplier,
-            Constants.Arm.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND);
+    this.maxSpeedDegreesPerSecondSupplier = maxSpeedDegreesPerSecondSupplier;
+    this.voltageSlewVoltsPerSecondSupplier = voltageSlewVoltsPerSecondSupplier;
     this.targetAngleDegrees =
         MathUtil.clamp(
             targetAngleDegrees, Constants.Arm.MIN_ANGLE_DEGREES, Constants.Arm.MAX_ANGLE_DEGREES);
@@ -143,8 +152,9 @@ public class ArmSubsystem extends SubsystemBase {
                 && Math.abs(motorRotationsAtMaxAngle) >= MINIMUM_VALID_CALIBRATION_ROTATIONS
             ? OptionalDouble.of(motorRotationsAtMaxAngle)
             : OptionalDouble.empty();
-    encoderPositions = io.getEncoderPositions();
-    previousAngleDegrees = getAngleDegrees(encoderPositions);
+    pollTunables();
+    io.updateInputs(inputs);
+    previousAngleDegrees = getAngleDegrees();
     holdSetpointDegrees = previousAngleDegrees;
     filteredHoldAngleDegrees = previousAngleDegrees;
     previousTimestampSeconds = Timer.getFPGATimestamp();
@@ -152,11 +162,12 @@ public class ArmSubsystem extends SubsystemBase {
   }
 
   public double getAverageMotorRotations() {
-    return encoderPositions.averageRotations();
+    return (inputs.motor1Rotations + inputs.motor2Rotations) / 2.0;
   }
 
   public double getAngleDegrees() {
-    return getAngleDegrees(encoderPositions);
+    return getAngleDegreesFromRotations(
+        (inputs.motor1Rotations + inputs.motor2Rotations) / 2.0);
   }
 
   public boolean isCalibrated() {
@@ -175,7 +186,9 @@ public class ArmSubsystem extends SubsystemBase {
   public void zeroEncoders() {
     stop();
     io.zeroEncoders();
-    encoderPositions = new ArmEncoderPositions(0.0, 0.0);
+    // Hardware takes a cycle to report the new zero; assume it immediately.
+    inputs.motor1Rotations = 0.0;
+    inputs.motor2Rotations = 0.0;
   }
 
   public void moveUp() {
@@ -193,7 +206,7 @@ public class ArmSubsystem extends SubsystemBase {
     }
     double voltageMagnitude =
         Math.min(
-            getRequestedVoltageMagnitude(),
+            requestedVoltageVolts,
             descentVoltageLimit(getAngleDegrees() - Constants.Arm.MIN_ANGLE_DEGREES));
     double targetVoltage =
         -Math.copySign(voltageMagnitude, motorRotationsAtMaxAngle.getAsDouble());
@@ -233,7 +246,7 @@ public class ArmSubsystem extends SubsystemBase {
   private void applyMovementVoltage(double goalAngleDegrees, boolean upward) {
     double distanceDegrees = Math.abs(goalAngleDegrees - getAngleDegrees());
     double voltageMagnitude =
-        Math.min(getRequestedVoltageMagnitude(), approachVoltageLimit(distanceDegrees));
+        Math.min(requestedVoltageVolts, approachVoltageLimit(distanceDegrees));
     double targetVoltage =
         upward
             ? Math.copySign(voltageMagnitude, motorRotationsAtMaxAngle.getAsDouble())
@@ -245,24 +258,18 @@ public class ArmSubsystem extends SubsystemBase {
    * Applies a movement voltage through the spec's safety ceilings: first the acceleration limit
    * (the voltage ramps at most the configured volts per second from the last movement voltage),
    * then the speed limit (the voltage is cut to zero when the arm already moves at the cap in
-   * the commanded direction). Both limits are NetworkTables-tunable; 0 or non-finite disables.
+   * the commanded direction). Both limits are NetworkTables-tunable; 0 disables.
    */
   private void applyRawMovementVoltage(double targetVoltage, boolean upward) {
     double timestampSeconds = Timer.getFPGATimestamp();
     double dtSeconds = timestampSeconds - lastMovementTimestampSeconds;
     double slewedVoltage =
         slewTowards(
-            targetVoltage,
-            lastMovementVoltage,
-            dtSeconds,
-            readPositiveSupplier(voltageSlewVoltsPerSecondSupplier));
+            targetVoltage, lastMovementVoltage, dtSeconds, voltageSlewVoltsPerSecond);
     double velocityInMotionDirection =
         upward ? angleVelocityDegreesPerSecond : -angleVelocityDegreesPerSecond;
     double limitedVoltage =
-        voltageAfterSpeedCap(
-            slewedVoltage,
-            velocityInMotionDirection,
-            readPositiveSupplier(maxSpeedDegreesPerSecondSupplier));
+        voltageAfterSpeedCap(slewedVoltage, velocityInMotionDirection, maxSpeedDegreesPerSecond);
     lastMovementVoltage = limitedVoltage;
     lastMovementTimestampSeconds = timestampSeconds;
     applyVoltage(limitedVoltage);
@@ -289,21 +296,28 @@ public class ArmSubsystem extends SubsystemBase {
     return velocityInMotionDirection >= maxSpeed ? 0.0 : voltage;
   }
 
-  private static double readPositiveSupplier(DoubleSupplier supplier) {
-    double value = supplier.getAsDouble();
-    return Double.isFinite(value) ? Math.max(value, 0.0) : 0.0;
+  private void pollTunables() {
+    // One sanitized read per tuning entry per cycle. A mistyped dashboard value (non-finite
+    // or negative, on the ceilings) falls back to the validated default instead of silently
+    // disabling a safety limit; zero remains a deliberate "limit off" switch.
+    double requested = Math.abs(voltageSupplier.getAsDouble());
+    requestedVoltageVolts =
+        Double.isFinite(requested) ? Math.min(requested, Constants.Arm.MAX_VOLTAGE) : 0.0;
+    holdVoltageVolts =
+        MathUtil.clamp(holdVoltageSupplier.getAsDouble(), 0.0, Constants.Arm.MAX_VOLTAGE);
+    maxSpeedDegreesPerSecond =
+        pollNonNegative(
+            maxSpeedDegreesPerSecondSupplier,
+            Constants.Arm.DEFAULT_MAX_SPEED_DEGREES_PER_SECOND);
+    voltageSlewVoltsPerSecond =
+        pollNonNegative(
+            voltageSlewVoltsPerSecondSupplier,
+            Constants.Arm.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND);
   }
 
-  /**
-   * Wraps a NetworkTables limit so an invalid reading (non-finite or negative — a mistyped
-   * dashboard value) falls back to the validated default instead of silently disabling the
-   * safety ceiling. Zero remains a deliberate "limit off" switch.
-   */
-  private static DoubleSupplier fallbackWhenInvalid(DoubleSupplier supplier, double fallback) {
-    return () -> {
-      double value = supplier.getAsDouble();
-      return Double.isFinite(value) && value >= 0.0 ? value : fallback;
-    };
+  private static double pollNonNegative(DoubleSupplier supplier, double fallback) {
+    double value = supplier.getAsDouble();
+    return Double.isFinite(value) && value >= 0.0 ? value : fallback;
   }
 
   private static double approachVoltageLimit(double degreesFromLimit) {
@@ -423,13 +437,6 @@ public class ArmSubsystem extends SubsystemBase {
     applyVoltage(0.0);
   }
 
-  private double getRequestedVoltageMagnitude() {
-    double requestedVoltage = Math.abs(voltageSupplier.getAsDouble());
-    return Double.isFinite(requestedVoltage)
-        ? Math.min(requestedVoltage, Constants.Arm.MAX_VOLTAGE)
-        : 0.0;
-  }
-
   private void latchHoldTarget() {
     holdSetpointDegrees =
         MathUtil.clamp(
@@ -476,12 +483,9 @@ public class ArmSubsystem extends SubsystemBase {
                   / Constants.Arm.TOP_FADE_DEGREES,
               0.0,
               1.0);
-      outputVoltage =
-          MathUtil.clamp(holdVoltageSupplier.getAsDouble(), 0.0, Constants.Arm.MAX_VOLTAGE)
-              * topFadeDegrees;
+      outputVoltage = holdVoltageVolts * topFadeDegrees;
     } else if (holdNudgeActive) {
-      outputVoltage =
-          Math.min(getRequestedVoltageMagnitude(), Constants.Arm.HOLD_NUDGE_VOLTAGE);
+      outputVoltage = Math.min(requestedVoltageVolts, Constants.Arm.HOLD_NUDGE_VOLTAGE);
     } else if (gravityHoldsTheArm) {
       // The arm's physical rest sits slightly below the calibrated zero, so at the bottom it
       // leans on the software zero from below with a gentle voltage that fades to zero over
@@ -506,14 +510,17 @@ public class ArmSubsystem extends SubsystemBase {
   }
 
   private void applyVoltage(double voltage) {
-    appliedVoltage = voltage;
     io.setVoltage(voltage);
   }
 
   @Override
   public void periodic() {
-    encoderPositions = io.getEncoderPositions();
-    double currentAngleDegrees = getAngleDegrees(encoderPositions);
+    // Poll the tuning entries first: one sanitized read per entry per cycle, shared by every
+    // consumer below (the same once-per-cycle pattern the sensor inputs follow).
+    pollTunables();
+    io.updateInputs(inputs);
+    Logger.processInputs("Arm", inputs);
+    double currentAngleDegrees = getAngleDegrees();
     // Elevator interlock: reaching the target angle grants permission; dropping well below it
     // (the arm leaving the top) revokes it.
     if (currentAngleDegrees >= targetAngleDegrees) {
@@ -541,39 +548,33 @@ public class ArmSubsystem extends SubsystemBase {
     previousAngleDegrees = currentAngleDegrees;
     previousTimestampSeconds = timestampSeconds;
 
-    Logger.recordOutput("Arm/Motor1Rotations", encoderPositions.motor1Rotations(), "rotations");
-    Logger.recordOutput("Arm/Motor2Rotations", encoderPositions.motor2Rotations(), "rotations");
+    Logger.recordOutput("Arm/Motor1Rotations", inputs.motor1Rotations, "rotations");
+    Logger.recordOutput("Arm/Motor2Rotations", inputs.motor2Rotations, "rotations");
+    Logger.recordOutput("Arm/AverageMotorRotations", getAverageMotorRotations(), "rotations");
     Logger.recordOutput(
-        "Arm/AverageMotorRotations", encoderPositions.averageRotations(), "rotations");
-    Logger.recordOutput(
-        "Arm/EncoderDifferenceRotations", encoderPositions.differenceRotations(), "rotations");
+        "Arm/EncoderDifferenceRotations",
+        Math.abs(inputs.motor1Rotations - inputs.motor2Rotations),
+        "rotations");
     Logger.recordOutput("Arm/AngleDegrees", currentAngleDegrees, "degrees");
     Logger.recordOutput("Arm/AngleVelocityDegreesPerSecond", angleVelocityDegreesPerSecond, "deg/s");
     Logger.recordOutput("Arm/HoldSetpointDegrees", holdSetpointDegrees, "degrees");
     Logger.recordOutput("Arm/HoldFilteredAngleDegrees", filteredHoldAngleDegrees, "degrees");
     Logger.recordOutput("Arm/Calibrated", isCalibrated());
-    Logger.recordOutput(
-        "Arm/AtLowerLimit",
-        isCalibrated()
-            && getAngleDegrees(encoderPositions) <= Constants.Arm.MIN_ANGLE_DEGREES);
-    Logger.recordOutput(
-        "Arm/AtUpperLimit",
-        isCalibrated()
-            && getAngleDegrees(encoderPositions) >= Constants.Arm.MAX_ANGLE_DEGREES);
-    Logger.recordOutput("Arm/RequestedVoltage", getRequestedVoltageMagnitude(), "volts");
-    Logger.recordOutput("Arm/AppliedVoltage", appliedVoltage, "volts");
+    Logger.recordOutput("Arm/AtLowerLimit", atLowerLimit());
+    Logger.recordOutput("Arm/AtUpperLimit", atUpperLimit());
+    Logger.recordOutput("Arm/RequestedVoltage", requestedVoltageVolts, "volts");
+    Logger.recordOutput("Arm/AppliedVoltage", inputs.appliedVolts, "volts");
     Logger.recordOutput(
         "Arm/MotorRotationsAtMaxAngle", motorRotationsAtMaxAngle.orElse(0.0), "rotations");
     Logger.recordOutput("Arm/LastMoveDurationSeconds", lastMoveDurationSeconds, "seconds");
     Logger.recordOutput("Arm/LastMoveActionName", lastMoveActionName);
   }
 
-  private double getAngleDegrees(ArmEncoderPositions positions) {
+  private double getAngleDegreesFromRotations(double averageRotations) {
     if (!isCalibrated()) {
       return 0.0;
     }
-    double normalizedPosition =
-        positions.averageRotations() / motorRotationsAtMaxAngle.getAsDouble();
+    double normalizedPosition = averageRotations / motorRotationsAtMaxAngle.getAsDouble();
     return Constants.Arm.MIN_ANGLE_DEGREES
         + normalizedPosition
             * (Constants.Arm.MAX_ANGLE_DEGREES - Constants.Arm.MIN_ANGLE_DEGREES);

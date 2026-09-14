@@ -12,11 +12,14 @@ import com.ctre.phoenix6.signals.NeutralModeValue;
 import edu.wpi.first.units.measure.Angle;
 import frc.robot.Constants;
 
-public class ElevatorIOTalonFX implements ElevatorSubsystem.ElevatorIO {
+/** ElevatorIO implementation for the real TalonFX hardware (CAN IDs from {@link Constants.Elevator}). */
+public class ElevatorIOTalonFX implements ElevatorIO {
   private final TalonFX motor1 = new TalonFX(Constants.Elevator.MOTOR_1_ID);
   private final TalonFX motor2 = new TalonFX(Constants.Elevator.MOTOR_2_ID);
   private final StatusSignal<Angle> motor1Position = motor1.getPosition();
   private final StatusSignal<Angle> motor2Position = motor2.getPosition();
+  private double motor1LastAppliedVolts;
+  private double motor2LastAppliedVolts;
 
   public ElevatorIOTalonFX() {
     configureMotor(motor1);
@@ -30,14 +33,19 @@ public class ElevatorIOTalonFX implements ElevatorSubsystem.ElevatorIO {
   }
 
   @Override
-  public ElevatorSubsystem.ElevatorEncoderPositions getEncoderPositions() {
+  public void updateInputs(ElevatorIO.ElevatorIOInputs inputs) {
+    // One CAN transaction refreshes every signal the subsystem consumes this cycle.
     BaseStatusSignal.refreshAll(motor1Position, motor2Position);
-    return new ElevatorSubsystem.ElevatorEncoderPositions(
-        motor1Position.getValueAsDouble(), motor2Position.getValueAsDouble());
+    inputs.motor1Rotations = motor1Position.getValueAsDouble();
+    inputs.motor2Rotations = motor2Position.getValueAsDouble();
+    inputs.motor1AppliedVolts = motor1LastAppliedVolts;
+    inputs.motor2AppliedVolts = motor2LastAppliedVolts;
   }
 
   @Override
   public void setMotorVoltages(double motor1Voltage, double motor2Voltage) {
+    motor1LastAppliedVolts = motor1Voltage;
+    motor2LastAppliedVolts = motor2Voltage;
     motor1.setVoltage(motor1Voltage);
     motor2.setVoltage(motor2Voltage);
   }

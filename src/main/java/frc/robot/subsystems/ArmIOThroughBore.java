@@ -22,11 +22,12 @@ import frc.robot.Constants;
  * the subsystem is unchanged — the absolute angle is presented through the existing
  * "average motor rotations" calibration math, so it round-trips exactly.
  */
-public class ArmIOThroughBore implements ArmSubsystem.ArmIO {
+public class ArmIOThroughBore implements ArmIO {
   private final TalonFX motor1 = new TalonFX(Constants.Arm.MOTOR_1_ID);
   private final TalonFX motor2 = new TalonFX(Constants.Arm.MOTOR_2_ID);
   private final DutyCycleEncoder encoder =
       new DutyCycleEncoder(Constants.Arm.THROUGH_BORE_DIO_CHANNEL);
+  private double lastAppliedVolts;
 
   public ArmIOThroughBore() {
     MotorOutputConfigs config =
@@ -41,7 +42,7 @@ public class ArmIOThroughBore implements ArmSubsystem.ArmIO {
   }
 
   @Override
-  public ArmSubsystem.ArmEncoderPositions getEncoderPositions() {
+  public void updateInputs(ArmIO.ArmIOInputs inputs) {
     // Absolute encoder: output is a 0..1 fraction of a full encoder turn. Convert to an arm
     // angle (accounting for mounting gearing and the mechanical-zero offset) and normalize
     // into [0, 360) so a shaft mounted slightly past the wrap point still reads correctly.
@@ -57,11 +58,14 @@ public class ArmIOThroughBore implements ArmSubsystem.ArmIO {
         angleDegrees
             / (Constants.Arm.MAX_ANGLE_DEGREES - Constants.Arm.MIN_ANGLE_DEGREES)
             * Constants.Arm.MOTOR_ROTATIONS_AT_MAX_ANGLE;
-    return new ArmSubsystem.ArmEncoderPositions(rotations, rotations);
+    inputs.motor1Rotations = rotations;
+    inputs.motor2Rotations = rotations;
+    inputs.appliedVolts = lastAppliedVolts;
   }
 
   @Override
   public void setVoltage(double voltage) {
+    lastAppliedVolts = voltage;
     motor1.setVoltage(voltage);
     motor2.setVoltage(voltage);
   }

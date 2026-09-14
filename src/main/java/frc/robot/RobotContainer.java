@@ -11,49 +11,25 @@ import frc.robot.subsystems.ArmIOTalonFX;
 import frc.robot.subsystems.ArmSubsystem;
 import frc.robot.subsystems.ElevatorIOTalonFX;
 import frc.robot.subsystems.ElevatorSubsystem;
-import org.littletonrobotics.junction.networktables.LoggedNetworkNumber;
 
 /**
  * This class is where the bulk of the robot should be declared. Since Command-based is a
  * "declarative" paradigm, very little robot logic should actually be handled in the {@link Robot}
  * periodic methods (just the scheduler calls). Instead, the structure of the robot (including
- * subsystems, OI devices, and commands) should be declared here.
+ * subsystems, OI devices, and commands) should be declared here. Its job is wiring only: which
+ * IO implementation backs each subsystem, how subsystems interconnect, and which buttons run
+ * which commands. Every subsystem owns its own NetworkTables tuning entries and polls them in
+ * its own periodic loop.
  */
 public class RobotContainer {
-  private final LoggedNetworkNumber armVoltage =
-      new LoggedNetworkNumber("/SmartDashboard/Arm Voltage", Constants.Arm.DEFAULT_VOLTAGE);
-  private final LoggedNetworkNumber armHoldVoltage =
-      new LoggedNetworkNumber("/SmartDashboard/Arm Hold Voltage", Constants.Arm.HOLD_VOLTAGE);
-  private final LoggedNetworkNumber armMaxSpeed =
-      new LoggedNetworkNumber(
-          "/SmartDashboard/Arm Max Speed (deg/s)",
-          Constants.Arm.DEFAULT_MAX_SPEED_DEGREES_PER_SECOND);
-  private final LoggedNetworkNumber armVoltageSlew =
-      new LoggedNetworkNumber(
-          "/SmartDashboard/Arm Voltage Slew (V/s)",
-          Constants.Arm.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND);
-  private final LoggedNetworkNumber elevatorMaxTravelSpeed =
-      new LoggedNetworkNumber(
-          "/SmartDashboard/Elevator Max Travel (/s)",
-          Constants.Elevator.DEFAULT_MAX_TRAVEL_FRACTION_PER_SECOND);
-  private final LoggedNetworkNumber elevatorVoltageSlew =
-      new LoggedNetworkNumber(
-          "/SmartDashboard/Elevator Voltage Slew (V/s)",
-          Constants.Elevator.DEFAULT_VOLTAGE_SLEW_VOLTS_PER_SECOND);
-
   private final ArmSubsystem armSubsystem =
       new ArmSubsystem(
           Constants.Arm.USE_THROUGH_BORE_ENCODER
               ? new ArmIOThroughBore()
               : new ArmIOTalonFX(),
-          armVoltage,
-          armHoldVoltage,
-          Constants.Arm.MOTOR_ROTATIONS_AT_MAX_ANGLE,
-          armMaxSpeed,
-          armVoltageSlew);
+          Constants.Arm.MOTOR_ROTATIONS_AT_MAX_ANGLE);
   private final ElevatorSubsystem elevatorSubsystem =
-      new ElevatorSubsystem(
-          new ElevatorIOTalonFX(), armSubsystem::isRaised, elevatorMaxTravelSpeed, elevatorVoltageSlew);
+      new ElevatorSubsystem(new ElevatorIOTalonFX(), armSubsystem::isRaised);
 
   private final CommandPS5Controller driverController =
       new CommandPS5Controller(OperatorConstants.DRIVER_CONTROLLER_PORT);
